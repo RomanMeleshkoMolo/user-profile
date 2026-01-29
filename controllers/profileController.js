@@ -54,7 +54,7 @@ function toSafeUser(user) {
 async function getProfile(req, res) {
   try {
 
-    console.log("====profile====");
+    // console.log("====profile====");
 
     const userId = getReqUserId(req);
     if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
@@ -64,7 +64,9 @@ async function getProfile(req, res) {
     const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    return res.json({ user: toSafeUser(user) });
+    // console.log( user );
+    // return res.json({ user: toSafeUser(user) });
+    return res.json({ user: user });
   } catch (e) {
     console.error('[profile GET] error:', e);
     return res.status(500).json({ message: 'Server error' });
@@ -112,8 +114,6 @@ async function updateProfile(req, res) {
 
 // GET /profile/avatar — вернёт presigned URL для текущего аватара (берём первый в массиве либо первый approved)
 async function getAvatar(req, res) {
-
-  console.log("====get avatar====");
 
   try {
     const userId = getReqUserId(req);
@@ -187,6 +187,9 @@ async function updateAvatar(req, res) {
 
 // GET /profile/photos — вернуть список фото с presigned URL для каждого
 async function getPhotos(req, res) {
+
+  console.log("===== photos =======");
+
   try {
     const userId = getReqUserId(req);
     if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
@@ -196,13 +199,20 @@ async function getPhotos(req, res) {
     const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const photos = await Promise.all(
-      (user.userPhoto || []).map(async (p) => ({
+    // Берём только approved-фото
+    const approvedPhotos = (user.userPhoto || []).filter(
+      (p) => p.status === 'approved'
+    );
+
+     const photos = await Promise.all(
+      approvedPhotos.map(async (p) => ({
         ...p,
         bucket: p.bucket || BUCKET,
         presignedUrl: await getGetObjectUrl(p.key),
       }))
     );
+
+    console.log( photos );
 
     return res.json({ photos });
   } catch (e) {
@@ -267,6 +277,31 @@ async function addPhoto(req, res) {
   }
 }
 
+// DELETE /profile — удаление аккаунта пользователя
+async function deleteProfile(req, res) {
+  try {
+    const userId = getReqUserId(req);
+    if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
+      return res.status(401).json({ message: 'Unauthorized: user id not found' });
+    }
+
+    console.log('[profile DELETE] удаляем пользователя с ID:', userId);
+
+    const deletedUser = await User.findByIdAndDelete(userId);
+
+    if (!deletedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.log('[profile DELETE] пользователь успешно удален:', deletedUser._id);
+
+    return res.json({ success: true, message: 'Account deleted successfully' });
+  } catch (e) {
+    console.error('[profile DELETE] error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 // DELETE /profile/photos/:photoId — photoId = key в S3
 async function removePhoto(req, res) {
   try {
@@ -310,6 +345,7 @@ async function removePhoto(req, res) {
 module.exports = {
   getProfile,
   updateProfile,
+  deleteProfile,
   getAvatar,
   updateAvatar,
   getPhotos,
