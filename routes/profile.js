@@ -5,6 +5,7 @@ const { auth } = require('../middlewares/auth');
 const {
   getProfile,
   updateProfile,
+  deleteProfile,
   getAvatar,
   updateAvatar,
   getPhotos,
@@ -15,6 +16,7 @@ const {
 // Все эндпоинты защищены
 router.get('/profile', auth({ optional: false }), getProfile);
 router.patch('/profile', auth({ optional: false }), updateProfile);
+router.delete('/profile', auth({ optional: false }), deleteProfile);
 
 router.get('/profile/avatar', auth({ optional: false }), getAvatar);
 // Внимание: теперь PUT принимает JSON { key } — файл уже загружен в S3
