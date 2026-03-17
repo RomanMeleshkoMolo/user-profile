@@ -2,22 +2,28 @@
 const mongoose = require('mongoose');
 const User = require('../models/userModel');
 
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { RekognitionClient, DetectModerationLabelsCommand } = require('@aws-sdk/client-rekognition');
 
 const REGION = process.env.AWS_REGION || 'eu-north-1';
-const BUCKET = process.env.AWS_BUCKET || 'uploads-photo';
+const BUCKET = process.env.S3_BUCKET || process.env.AWS_BUCKET || 'molo-user-photos';
 const PRESIGNED_TTL_SEC = Number(process.env.S3_GET_TTL_SEC || 3600); // 1 час по умолчанию
 
-const s3 = new S3Client({
-  region: REGION,
-  credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
-    ? {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      }
-    : undefined,
-});
+const credentials = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+  ? { accessKeyId: process.env.AWS_ACCESS_KEY_ID, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY }
+  : undefined;
+
+const s3 = new S3Client({ region: REGION, credentials });
+
+const REKOGNITION_REGION = process.env.AWS_REKOGNITION_REGION || REGION;
+const MODERATION_THRESHOLD = Number(process.env.MODERATION_THRESHOLD || 80);
+const BLOCKED_CATEGORIES = new Set([
+  'Violence', 'Graphic Violence', 'Weapons', 'Hate Symbols',
+  'Explicit Nudity', 'Sexual Activity', 'Sexual Content',
+  'Visually Disturbing', 'Self-Harm', 'Drugs', 'Alcohol', 'Tobacco',
+]);
+const rekognition = new RekognitionClient({ region: REKOGNITION_REGION, credentials });
 
 function getReqUserId(req) {
   return (
@@ -34,6 +40,34 @@ async function getGetObjectUrl(key, expiresInSec = PRESIGNED_TTL_SEC) {
   return getSignedUrl(s3, cmd, { expiresIn: expiresInSec });
 }
 
+const PRESIGNED_UPLOAD_TTL_SEC = Number(process.env.S3_PUT_TTL_SEC || 300); // 5 минут
+
+async function getPutObjectUrl(key, contentType, expiresInSec = PRESIGNED_UPLOAD_TTL_SEC) {
+  const cmd = new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType });
+  return getSignedUrl(s3, cmd, { expiresIn: expiresInSec });
+}
+
+// GET /profile/photos/upload-url — вернуть presigned PUT URL для загрузки фото в S3
+async function getPhotoUploadUrl(req, res) {
+  try {
+    const userId = getReqUserId(req);
+    if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const { filename, mimeType } = req.query;
+    const ext = (filename || 'photo.jpg').split('.').pop().toLowerCase() || 'jpg';
+    const key = `tmp/${String(userId)}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const contentType = mimeType || 'image/jpeg';
+
+    const url = await getPutObjectUrl(key, contentType);
+    return res.json({ url, key, bucket: BUCKET });
+  } catch (e) {
+    console.error('[profile GET upload-url] error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 function toSafeUser(user) {
   return {
     _id: user._id,
@@ -42,7 +76,21 @@ function toSafeUser(user) {
     age: user.age,
     email: user.email,
     gender: user.gender,
-    interests: user.interests || null,
+    interests: user.interests || [],
+    education: user.education || '',
+    lookingFor: user.lookingFor || '',
+    about: user.about || '',
+    work: user.work || '',
+    wishUser: user.wishUser || null,
+    userLocation: user.userLocation || null,
+    userSex: user.userSex || null,
+    zodiac: user.zodiac || '',
+    languages: user.languages || [],
+    children: user.children || '',
+    pets: user.pets || [],
+    smoking: user.smoking || '',
+    alcohol: user.alcohol || '',
+    relationship: user.relationship || '',
     onboardingComplete: user.onboardingComplete,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -81,18 +129,55 @@ async function updateProfile(req, res) {
       return res.status(401).json({ message: 'Unauthorized: user id not found in request context' });
     }
 
-    const allowed = ['name', 'gender', 'age', 'userBirthday', 'wishUser', 'userLocation', 'interests'];
+    const allowed = ['name', 'gender', 'age', 'userBirthday', 'wishUser', 'userLocation', 'interests', 'education', 'lookingFor', 'about', 'work', 'userSex', 'zodiac', 'languages', 'children', 'pets', 'smoking', 'alcohol', 'relationship'];
     const updates = {};
     for (const key of allowed) {
       if (key in req.body) updates[key] = req.body[key];
     }
 
+    // interests — массив строк
     if ('interests' in updates) {
       const it = updates.interests;
-      if (!it || typeof it !== 'object' || !it.title || !String(it.title).trim()) {
-        delete updates.interests;
+      if (Array.isArray(it)) {
+        updates.interests = it.map(v => String(v).trim()).filter(Boolean);
       } else {
-        updates.interests = { title: String(it.title).trim(), icon: it.icon || '' };
+        delete updates.interests;
+      }
+    }
+
+    // languages — массив строк
+    if ('languages' in updates) {
+      const langs = updates.languages;
+      if (Array.isArray(langs)) {
+        updates.languages = langs.map(v => String(v).trim()).filter(Boolean);
+      } else {
+        delete updates.languages;
+      }
+    }
+
+    // pets — массив строк
+    if ('pets' in updates) {
+      const p = updates.pets;
+      if (Array.isArray(p)) {
+        updates.pets = p.map(v => String(v).trim()).filter(Boolean);
+      } else {
+        delete updates.pets;
+      }
+    }
+
+    // lookingFor — объект { id, title, icon } или null
+    if ('lookingFor' in updates) {
+      const lf = updates.lookingFor;
+      if (lf && typeof lf === 'object' && lf.id && lf.title) {
+        updates.lookingFor = {
+          id: String(lf.id).trim(),
+          title: String(lf.title).trim(),
+          icon: lf.icon ? String(lf.icon).trim() : '',
+        };
+      } else if (lf === null || lf === '') {
+        updates.lookingFor = null;
+      } else {
+        delete updates.lookingFor;
       }
     }
 
@@ -185,11 +270,8 @@ async function updateAvatar(req, res) {
   }
 }
 
-// GET /profile/photos — вернуть список фото с presigned URL для каждого
+// GET /profile/photos — вернуть approved + pending фото с presigned URL
 async function getPhotos(req, res) {
-
-  console.log("===== photos =======");
-
   try {
     const userId = getReqUserId(req);
     if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
@@ -199,25 +281,84 @@ async function getPhotos(req, res) {
     const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Берём только approved-фото
-    const approvedPhotos = (user.userPhoto || []).filter(
-      (p) => p.status === 'approved'
+    // Возвращаем approved и pending — юзер видит свои фото сразу после загрузки
+    const visiblePhotos = (user.userPhoto || []).filter(
+      (p) => p.status === 'approved' || p.status === 'pending'
     );
 
-     const photos = await Promise.all(
-      approvedPhotos.map(async (p) => ({
+    const photos = await Promise.all(
+      visiblePhotos.map(async (p) => ({
         ...p,
         bucket: p.bucket || BUCKET,
-        presignedUrl: await getGetObjectUrl(p.key),
+        url: await getGetObjectUrl(p.key),
       }))
     );
-
-    console.log( photos );
 
     return res.json({ photos });
   } catch (e) {
     console.error('[profile GET photos] error:', e);
     return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Фоновая верификация фото (запускается после загрузки)
+async function schedulePhotoVerification(userId, photoKeys) {
+  // Даём 2 минуты перед проверкой — можно уменьшить/увеличить
+  setTimeout(async () => {
+    try {
+      const user = await User.findById(userId);
+      if (!user) return;
+
+      let changed = false;
+
+      for (const key of photoKeys) {
+        const photo = user.userPhoto.find((p) => p.key === key);
+        if (!photo || photo.status !== 'pending') continue;
+
+        // TODO: подключить реальную верификацию (AWS Rekognition, Azure Content Moderator и т.д.)
+        // Пример: const passed = await rekognitionCheck(key);
+        const passed = await verifyPhoto(key);
+
+        if (passed) {
+          photo.status = 'approved';
+        } else {
+          // Фото не прошло — тихо удаляем
+          user.userPhoto = user.userPhoto.filter((p) => p.key !== key);
+        }
+        changed = true;
+      }
+
+      if (changed) await user.save();
+    } catch (e) {
+      console.error('[photoVerification] error:', e);
+    }
+  }, 2 * 60 * 1000); // 2 минуты
+}
+
+// Верификация фото через AWS Rekognition (те же credentials, что в user-service)
+async function verifyPhoto(photoKey) {
+  try {
+    const resp = await rekognition.send(new DetectModerationLabelsCommand({
+      Image: { S3Object: { Bucket: BUCKET, Name: photoKey } },
+      MinConfidence: MODERATION_THRESHOLD,
+    }));
+
+    const labels = Array.isArray(resp?.ModerationLabels) ? resp.ModerationLabels : [];
+    const blocked = labels.filter(l => {
+      const name = l.Name || '';
+      const parent = l.ParentName || '';
+      return (l.Confidence || 0) >= MODERATION_THRESHOLD &&
+        (BLOCKED_CATEGORIES.has(name) || BLOCKED_CATEGORIES.has(parent));
+    });
+
+    if (blocked.length > 0) {
+      console.warn('[verifyPhoto] blocked labels for key:', photoKey, blocked.map(l => l.Name));
+    }
+
+    return blocked.length === 0; // true = прошло, false = нарушение
+  } catch (e) {
+    console.error('[verifyPhoto] Rekognition error:', e?.message || e);
+    return true; // при ошибке сети/AWS — не удаляем фото
   }
 }
 
@@ -240,14 +381,14 @@ async function addPhoto(req, res) {
       .map((p) => ({
         key: String(p.key),
         bucket: p.bucket || BUCKET,
-        url: undefined, // если бакет приватный — url можно не хранить
-        status: 'approved', // или 'pending' если нужна модерация
+        url: undefined,
+        status: 'pending', // ждёт верификации, станет 'approved' после проверки
         reason: undefined,
         moderation: [],
         faceCount: undefined,
         width: undefined,
         height: undefined,
-        format: (p.mimeType || '').split('/') || undefined,
+        format: p.mimeType ? p.mimeType.split('/')[1] : undefined,
         createdAt: new Date(),
       }));
 
@@ -259,12 +400,18 @@ async function addPhoto(req, res) {
 
     await user.save();
 
+    // Запускаем фоновую верификацию (не блокирует ответ)
+    const newKeys = normalized.map((p) => p.key);
+    schedulePhotoVerification(userId, newKeys);
+
     const enriched = await Promise.all(
-      user.userPhoto.map(async (p) => ({
-        ...p.toObject?.() || p,
-        bucket: p.bucket || BUCKET,
-        presignedUrl: await getGetObjectUrl(p.key),
-      }))
+      user.userPhoto
+        .filter((p) => p.status === 'approved' || p.status === 'pending')
+        .map(async (p) => ({
+          ...p.toObject?.() || p,
+          bucket: p.bucket || BUCKET,
+          url: await getGetObjectUrl(p.key),
+        }))
     );
 
     return res.status(201).json({ photos: enriched, user: toSafeUser(user.toObject?.() || user) });
@@ -351,4 +498,5 @@ module.exports = {
   getPhotos,
   addPhoto,
   removePhoto,
+  getPhotoUploadUrl,
 };

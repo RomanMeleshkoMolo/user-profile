@@ -11,6 +11,7 @@ const {
   getPhotos,
   addPhoto,
   removePhoto,
+  getPhotoUploadUrl,
 } = require('../controllers/profileController');
 
 // Все эндпоинты защищены
@@ -23,6 +24,8 @@ router.get('/profile/avatar', auth({ optional: false }), getAvatar);
 router.put('/profile/avatar', auth({ optional: false }), updateAvatar);
 
 router.get('/profile/photos', auth({ optional: false }), getPhotos);
+// Получить presigned PUT URL для загрузки фото напрямую в S3
+router.get('/profile/photos/upload-url', auth({ optional: false }), getPhotoUploadUrl);
 // Принимаем метаданные уже загруженных фото: { photos: [{ key, filename, mimeType, size }] }
 router.post('/profile/photos', auth({ optional: false }), addPhoto);
 
