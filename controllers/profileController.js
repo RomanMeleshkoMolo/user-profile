@@ -1,6 +1,8 @@
 // server/controllers/profileController.js
 const mongoose = require('mongoose');
 const User = require('../models/userModel');
+const GuestView = require('../models/guestViewModel');
+const { emitToUser } = require('../src/socketManager');
 
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
@@ -489,6 +491,91 @@ async function removePhoto(req, res) {
   }
 }
 
+/**
+ * POST /profile/view/:ownerId
+ * Записывает просмотр профиля. Не считает самопросмотры.
+ */
+async function recordProfileView(req, res) {
+  try {
+    const viewerId = String(getReqUserId(req));
+    const { ownerId } = req.params;
+
+    if (!ownerId || !mongoose.Types.ObjectId.isValid(ownerId)) {
+      return res.status(400).json({ message: 'Invalid ownerId' });
+    }
+
+    // Самопросмотр не считаем
+    if (viewerId === ownerId) {
+      return res.json({ ok: true });
+    }
+
+    // Получаем данные смотрящего (имя + первое фото)
+    const viewer = await User.findById(viewerId).select('name userPhoto').lean();
+    const rawPhoto = viewer?.userPhoto?.[0];
+    let viewerPhoto = null;
+
+    if (rawPhoto) {
+      if (rawPhoto.key) {
+        // S3 presigned URL
+        try {
+          const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: rawPhoto.key });
+          viewerPhoto = await getSignedUrl(s3, cmd, { expiresIn: PRESIGNED_TTL_SEC });
+        } catch (_) {}
+      } else if (rawPhoto.url) {
+        viewerPhoto = rawPhoto.url;
+      }
+    }
+
+    // Upsert: один гость → одна запись, обновляем viewedAt и фото
+    await GuestView.findOneAndUpdate(
+      { viewerId: new mongoose.Types.ObjectId(viewerId), profileOwnerId: new mongoose.Types.ObjectId(ownerId) },
+      { viewedAt: new Date(), viewerName: viewer?.name || '', viewerPhoto },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    // Уведомляем владельца профиля через socket
+    emitToUser(ownerId, 'new_guest', {
+      viewerId,
+      viewerName: viewer?.name || '',
+      viewerPhoto,
+    });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('[profile] recordProfileView error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+/**
+ * GET /profile/guests
+ * Возвращает список гостей для текущего пользователя (макс. 100, по убыванию даты).
+ */
+async function getGuests(req, res) {
+  try {
+    const userId = getReqUserId(req);
+
+    const guests = await GuestView.find({ profileOwnerId: new mongoose.Types.ObjectId(String(userId)) })
+      .sort({ viewedAt: -1 })
+      .limit(100)
+      .lean();
+
+    return res.json({
+      count: guests.length,
+      guests: guests.map(g => ({
+        _id:         g._id,
+        viewerId:    g.viewerId,
+        viewerName:  g.viewerName,
+        viewerPhoto: g.viewerPhoto,
+        viewedAt:    g.viewedAt,
+      })),
+    });
+  } catch (e) {
+    console.error('[profile] getGuests error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -499,4 +586,6 @@ module.exports = {
   addPhoto,
   removePhoto,
   getPhotoUploadUrl,
+  recordProfileView,
+  getGuests,
 };
