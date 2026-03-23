@@ -1,7 +1,10 @@
+const http = require('http');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 require('dotenv').config();
+
+const { initSocketIO } = require('./socketManager');
 
 // Connect routers
 const profile = require('../routes/profile');
@@ -13,8 +16,11 @@ app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 
 // Use routes
-app.use( profile );
+app.use(profile);
 
-app.listen(PORT, '0.0.0.0',() => {
+const server = http.createServer(app);
+initSocketIO(server);
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
