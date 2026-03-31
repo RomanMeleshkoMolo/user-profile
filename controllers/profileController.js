@@ -509,8 +509,8 @@ async function recordProfileView(req, res) {
       return res.json({ ok: true });
     }
 
-    // Получаем данные смотрящего (имя + первое фото)
-    const viewer = await User.findById(viewerId).select('name userPhoto').lean();
+    // Получаем данные смотрящего (имя + пол + первое фото)
+    const viewer = await User.findById(viewerId).select('name gender userPhoto').lean();
     const rawPhoto = viewer?.userPhoto?.[0];
     let viewerPhoto = null;
 
@@ -526,10 +526,12 @@ async function recordProfileView(req, res) {
       }
     }
 
+    const viewerGender = viewer?.gender?.id || '';
+
     // Upsert: один гость → одна запись, обновляем viewedAt и фото
     await GuestView.findOneAndUpdate(
       { viewerId: new mongoose.Types.ObjectId(viewerId), profileOwnerId: new mongoose.Types.ObjectId(ownerId) },
-      { viewedAt: new Date(), viewerName: viewer?.name || '', viewerPhoto },
+      { viewedAt: new Date(), viewerName: viewer?.name || '', viewerPhoto, viewerGender },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
@@ -538,6 +540,7 @@ async function recordProfileView(req, res) {
       viewerId,
       viewerName: viewer?.name || '',
       viewerPhoto,
+      viewerGender,
     });
 
     return res.json({ ok: true });
@@ -563,15 +566,65 @@ async function getGuests(req, res) {
     return res.json({
       count: guests.length,
       guests: guests.map(g => ({
-        _id:         g._id,
-        viewerId:    g.viewerId,
-        viewerName:  g.viewerName,
-        viewerPhoto: g.viewerPhoto,
-        viewedAt:    g.viewedAt,
+        _id:          g._id,
+        viewerId:     g.viewerId,
+        viewerName:   g.viewerName,
+        viewerPhoto:  g.viewerPhoto,
+        viewerGender: g.viewerGender || '',
+        viewedAt:     g.viewedAt,
       })),
     });
   } catch (e) {
     console.error('[profile] getGuests error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// GET /profile/user/:userId — публичный профиль другого пользователя
+async function getPublicProfile(req, res) {
+  try {
+    const requesterId = getReqUserId(req);
+    if (!requesterId) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { userId } = req.params;
+    if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    const user = await User.findById(userId).lean();
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const approvedPhotos = (user.userPhoto || []).filter(p => p.status === 'approved');
+    const photoUrls = await Promise.all(
+      approvedPhotos.map(p => getGetObjectUrl(p.key))
+    );
+
+    return res.json({
+      _id: user._id,
+      id: user._id,
+      name: user.name,
+      age: user.age,
+      gender: user.gender,
+      userSex: user.userSex || null,
+      userLocation: user.userLocation || null,
+      about: user.about || '',
+      work: user.work || '',
+      interests: user.interests || [],
+      education: user.education || '',
+      lookingFor: user.lookingFor || '',
+      wishUser: user.wishUser || null,
+      zodiac: user.zodiac || '',
+      languages: user.languages || [],
+      children: user.children || '',
+      pets: user.pets || [],
+      smoking: user.smoking || '',
+      alcohol: user.alcohol || '',
+      relationship: user.relationship || '',
+      isOnline: user.isOnline || false,
+      photoUrls,
+    });
+  } catch (e) {
+    console.error('[profile GET public] error:', e);
     return res.status(500).json({ message: 'Server error' });
   }
 }
@@ -588,4 +641,5 @@ module.exports = {
   getPhotoUploadUrl,
   recordProfileView,
   getGuests,
+  getPublicProfile,
 };
