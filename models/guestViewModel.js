@@ -5,6 +5,7 @@ const guestViewSchema = new mongoose.Schema({
   profileOwnerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   viewerName:      { type: String, default: '' },
   viewerPhoto:     { type: String, default: null }, // первое фото/presigned URL
+  viewerGender:    { type: String, default: '' },
   viewedAt:        { type: Date, default: Date.now },
 });
 

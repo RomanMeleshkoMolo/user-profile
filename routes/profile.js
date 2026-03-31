@@ -14,6 +14,7 @@ const {
   getPhotoUploadUrl,
   recordProfileView,
   getGuests,
+  getPublicProfile,
 } = require('../controllers/profileController');
 
 // Все эндпоинты защищены
@@ -37,5 +38,6 @@ router.delete('/profile/photos/:photoId', auth({ optional: false }), removePhoto
 // Гости: запись просмотра и получение списка
 router.post('/profile/view/:ownerId', auth({ optional: false }), recordProfileView);
 router.get('/profile/guests', auth({ optional: false }), getGuests);
+router.get('/profile/user/:userId', auth({ optional: false }), getPublicProfile);
 
 module.exports = router;
