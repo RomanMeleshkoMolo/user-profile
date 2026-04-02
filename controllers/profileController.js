@@ -528,6 +528,13 @@ async function recordProfileView(req, res) {
 
     const viewerGender = viewer?.gender?.id || '';
 
+    // Проверяем был ли этот юзер уже гостем раньше
+    const existingGuest = await GuestView.findOne({
+      viewerId: new mongoose.Types.ObjectId(viewerId),
+      profileOwnerId: new mongoose.Types.ObjectId(ownerId),
+    }).lean();
+    const isFirstVisit = !existingGuest;
+
     // Upsert: один гость → одна запись, обновляем viewedAt и фото
     await GuestView.findOneAndUpdate(
       { viewerId: new mongoose.Types.ObjectId(viewerId), profileOwnerId: new mongoose.Types.ObjectId(ownerId) },
@@ -535,13 +542,15 @@ async function recordProfileView(req, res) {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    // Уведомляем владельца профиля через socket
-    emitToUser(ownerId, 'new_guest', {
-      viewerId,
-      viewerName: viewer?.name || '',
-      viewerPhoto,
-      viewerGender,
-    });
+    // Уведомляем владельца профиля только при первом визите
+    if (isFirstVisit) {
+      emitToUser(ownerId, 'new_guest', {
+        viewerId,
+        viewerName: viewer?.name || '',
+        viewerPhoto,
+        viewerGender,
+      });
+    }
 
     return res.json({ ok: true });
   } catch (e) {
