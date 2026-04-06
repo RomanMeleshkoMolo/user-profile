@@ -84,6 +84,7 @@ function toSafeUser(user) {
     about: user.about || '',
     work: user.work || '',
     wishUser: user.wishUser || null,
+    userBirthday: user.userBirthday || null,
     userLocation: user.userLocation || null,
     userSex: user.userSex || null,
     zodiac: user.zodiac || '',
