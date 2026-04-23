@@ -214,19 +214,23 @@ async function getAvatar(req, res) {
 
     const photos = user.userPhoto || [];
     const avatar =
-      photos.find((p) => p.status === 'approved') ||
-      photos ||
+      photos.find((p) => p.status === 'approved' && p.key) ||
+      photos.find((p) => p.key) ||
       null;
 
     if (!avatar) {
       return res.json({ avatar: null });
     }
 
-    const url = await getGetObjectUrl(avatar.key);
+    let url = avatar.url || null;
+    if (avatar.key) {
+      try { url = await getGetObjectUrl(avatar.key); } catch (_) {}
+    }
     return res.json({
       avatar: {
         ...avatar,
         presignedUrl: url,
+        url,
         bucket: avatar.bucket || BUCKET,
       },
     });
@@ -290,11 +294,13 @@ async function getPhotos(req, res) {
     );
 
     const photos = await Promise.all(
-      visiblePhotos.map(async (p) => ({
-        ...p,
-        bucket: p.bucket || BUCKET,
-        url: await getGetObjectUrl(p.key),
-      }))
+      visiblePhotos.map(async (p) => {
+        let url = p.url || null;
+        if (p.key) {
+          try { url = await getGetObjectUrl(p.key); } catch (_) {}
+        }
+        return { ...p, bucket: p.bucket || BUCKET, url };
+      })
     );
 
     return res.json({ photos });

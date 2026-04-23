@@ -17,6 +17,8 @@ const {
   getPublicProfile,
 } = require('../controllers/profileController');
 
+const { getDailyPhrase } = require('../controllers/motivationController');
+
 // Все эндпоинты защищены
 router.get('/profile', auth({ optional: false }), getProfile);
 router.patch('/profile', auth({ optional: false }), updateProfile);
@@ -39,5 +41,8 @@ router.delete('/profile/photos/:photoId', auth({ optional: false }), removePhoto
 router.post('/profile/view/:ownerId', auth({ optional: false }), recordProfileView);
 router.get('/profile/guests', auth({ optional: false }), getGuests);
 router.get('/profile/user/:userId', auth({ optional: false }), getPublicProfile);
+
+// Мотивационная фраза дня
+router.get('/profile/motivation/daily', auth({ optional: false }), getDailyPhrase);
 
 module.exports = router;
