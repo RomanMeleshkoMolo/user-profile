@@ -645,6 +645,69 @@ async function getPublicProfile(req, res) {
   }
 }
 
+const DAY_LABELS_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+
+/**
+ * GET /profile/stats/views
+ * Уникальные посетители за каждый из последних 7 дней + статус активности.
+ */
+async function getActivityStats(req, res) {
+  try {
+    const userId = getReqUserId(req);
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+    const ownerId = new mongoose.Types.ObjectId(String(userId));
+    const now = new Date();
+
+    // Формируем 7 дневных бакетов: сегодня и 6 дней назад
+    const buckets = [];
+    for (let i = 6; i >= 0; i--) {
+      const start = new Date(now);
+      start.setDate(start.getDate() - i);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      buckets.push({ start, end });
+    }
+
+    const likesCol = mongoose.connection.db.collection('likes');
+
+    const [dayCounts, dayLikes, total] = await Promise.all([
+      Promise.all(
+        buckets.map(({ start, end }) =>
+          GuestView.countDocuments({ profileOwnerId: ownerId, viewedAt: { $gte: start, $lt: end } })
+        )
+      ),
+      Promise.all(
+        buckets.map(({ start, end }) =>
+          likesCol.countDocuments({ toUser: ownerId, createdAt: { $gte: start, $lt: end } })
+        )
+      ),
+      GuestView.countDocuments({ profileOwnerId: ownerId }),
+    ]);
+
+    const days = buckets.map(({ start }, i) => ({
+      date:  start.toISOString().slice(0, 10),
+      label: DAY_LABELS_RU[start.getDay()],
+      count: dayCounts[i],
+      likes: dayLikes[i],
+    }));
+
+    const todayCount = dayCounts[dayCounts.length - 1];
+    let status;
+    if (todayCount >= 200)     status = 'все звезды отдыхают!';
+    else if (todayCount >= 50) status = 'популярен';
+    else if (todayCount >= 20) status = 'высокая';
+    else if (todayCount >= 5)  status = 'средняя';
+    else                       status = 'низкая';
+
+    return res.json({ days, total, status });
+  } catch (e) {
+    console.error('[profile] getActivityStats error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -658,4 +721,5 @@ module.exports = {
   recordProfileView,
   getGuests,
   getPublicProfile,
+  getActivityStats,
 };
