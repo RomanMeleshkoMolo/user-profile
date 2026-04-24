@@ -15,6 +15,7 @@ const {
   recordProfileView,
   getGuests,
   getPublicProfile,
+  getActivityStats,
 } = require('../controllers/profileController');
 
 const { getDailyPhrase } = require('../controllers/motivationController');
@@ -44,5 +45,8 @@ router.get('/profile/user/:userId', auth({ optional: false }), getPublicProfile)
 
 // Мотивационная фраза дня
 router.get('/profile/motivation/daily', auth({ optional: false }), getDailyPhrase);
+
+// Статистика просмотров анкеты
+router.get('/profile/stats/views', auth({ optional: false }), getActivityStats);
 
 module.exports = router;
