@@ -17,6 +17,8 @@ const COUNTS_PER_DAY = [2, 7, 4, 11, 6, 13, 3];
 const LIKES_PER_DAY  = [1, 3, 2,  5, 3,  6, 1];
 
 const DAY_LABELS_RU = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+const pad = n => String(n).padStart(2, '0');
+const localDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
 async function main() {
   // src/db.js уже вызывает mongoose.connect при require, ждём готовности
@@ -62,7 +64,7 @@ async function main() {
 
     const visitorCount = COUNTS_PER_DAY[6 - dayOffset];
     const likeCount    = LIKES_PER_DAY[6 - dayOffset];
-    const dateStr = dayStart.toISOString().slice(0, 10);
+    const dateStr = localDateStr(dayStart);
     const dayName = DAY_LABELS_RU[dayStart.getDay()];
 
     // Гости
@@ -111,7 +113,7 @@ async function main() {
       GuestView.countDocuments({ profileOwnerId: ownerId, viewedAt: { $gte: start, $lt: end } }),
       likesCol.countDocuments({ toUser: ownerId, createdAt: { $gte: start, $lt: end } }),
     ]);
-    days.push({ date: start.toISOString().slice(0, 10), label: DAY_LABELS_RU[start.getDay()], count, likes });
+    days.push({ date: localDateStr(start), label: DAY_LABELS_RU[start.getDay()], count, likes });
   }
   const total = await GuestView.countDocuments({ profileOwnerId: ownerId });
 

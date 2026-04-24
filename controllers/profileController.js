@@ -647,6 +647,12 @@ async function getPublicProfile(req, res) {
 
 const DAY_LABELS_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
+// Локальная дата в формате YYYY-MM-DD (без конвертации в UTC)
+const localDateStr = (d) => {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 /**
  * GET /profile/stats/views
  * Уникальные посетители за каждый из последних 7 дней + статус активности.
@@ -687,7 +693,7 @@ async function getActivityStats(req, res) {
     ]);
 
     const days = buckets.map(({ start }, i) => ({
-      date:  start.toISOString().slice(0, 10),
+      date:  localDateStr(start),  // локальная дата, не UTC
       label: DAY_LABELS_RU[start.getDay()],
       count: dayCounts[i],
       likes: dayLikes[i],
