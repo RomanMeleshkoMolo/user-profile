@@ -18,7 +18,7 @@ const {
   getActivityStats,
 } = require('../controllers/profileController');
 
-const { getDailyPhrase } = require('../controllers/motivationController');
+const { getDailyPhrase, getLikesDailyPhrase } = require('../controllers/motivationController');
 
 // Все эндпоинты защищены
 router.get('/profile', auth({ optional: false }), getProfile);
@@ -45,6 +45,7 @@ router.get('/profile/user/:userId', auth({ optional: false }), getPublicProfile)
 
 // Мотивационная фраза дня
 router.get('/profile/motivation/daily', auth({ optional: false }), getDailyPhrase);
+router.get('/profile/motivation/likes-daily', auth({ optional: false }), getLikesDailyPhrase);
 
 // Статистика просмотров анкеты
 router.get('/profile/stats/views', auth({ optional: false }), getActivityStats);
