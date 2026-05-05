@@ -7,6 +7,7 @@ function initSocketIO(httpServer) {
   io = new Server(httpServer, {
     cors: { origin: '*' },
     transports: ['websocket', 'polling'],
+    path: '/socket/profile',
   });
 
   io.use((socket, next) => {
