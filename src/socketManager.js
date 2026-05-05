@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const User = require('../models/userModel');
 
 let io = null;
 
@@ -24,11 +25,41 @@ function initSocketIO(httpServer) {
     }
   });
 
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     console.log(`[socket-profile] User connected: ${socket.userId}`);
     socket.join(`user:${socket.userId}`);
-    socket.on('disconnect', () => {
+
+    // Обновляем статус онлайн и рассылаем всем подключённым пользователям
+    try {
+      await User.findByIdAndUpdate(socket.userId, {
+        isOnline: true,
+        lastSeen: new Date(),
+      });
+      socket.broadcast.emit('user_status', {
+        userId: socket.userId,
+        isOnline: true,
+        lastSeen: null,
+      });
+    } catch (e) {
+      console.error('[socket-profile] set online error:', e.message);
+    }
+
+    socket.on('disconnect', async () => {
       console.log(`[socket-profile] User disconnected: ${socket.userId}`);
+      const lastSeen = new Date();
+      try {
+        await User.findByIdAndUpdate(socket.userId, {
+          isOnline: false,
+          lastSeen,
+        });
+        socket.broadcast.emit('user_status', {
+          userId: socket.userId,
+          isOnline: false,
+          lastSeen,
+        });
+      } catch (e) {
+        console.error('[socket-profile] set offline error:', e.message);
+      }
     });
   });
 
