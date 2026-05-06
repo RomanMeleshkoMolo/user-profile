@@ -441,15 +441,28 @@ async function deleteProfile(req, res) {
       return res.status(401).json({ message: 'Unauthorized: user id not found' });
     }
 
+    const objectId = new mongoose.Types.ObjectId(String(userId));
+
     console.log('[profile DELETE] удаляем пользователя с ID:', userId);
 
-    const deletedUser = await User.findByIdAndDelete(userId);
+    const deletedUser = await User.findByIdAndDelete(objectId);
 
     if (!deletedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log('[profile DELETE] пользователь успешно удален:', deletedUser._id);
+    // Удаляем все связанные данные из других коллекций
+    const db = mongoose.connection.db;
+    await Promise.allSettled([
+      db.collection('likes').deleteMany({ $or: [{ fromUser: objectId }, { toUser: objectId }] }),
+      db.collection('conversations').deleteMany({ participants: objectId }),
+      db.collection('messages').deleteMany({ $or: [{ senderId: objectId }, { receiverId: objectId }] }),
+      db.collection('seens').deleteMany({ $or: [{ userId: objectId }, { seenUserId: objectId }] }),
+      db.collection('devicetokens').deleteMany({ userId: objectId }),
+      GuestView.deleteMany({ $or: [{ viewerId: objectId }, { profileOwnerId: objectId }] }),
+    ]);
+
+    console.log('[profile DELETE] пользователь и связанные данные удалены:', deletedUser._id);
 
     return res.json({ success: true, message: 'Account deleted successfully' });
   } catch (e) {
