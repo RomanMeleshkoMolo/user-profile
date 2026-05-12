@@ -1,4 +1,5 @@
-const mongoose = require('../src/db');
+const mongoose = require('mongoose');
+const { authConn } = require('../src/db');
 
 const UserPhotoSchema = new mongoose.Schema(
   {
@@ -64,6 +65,6 @@ const userSchema = new mongoose.Schema({
   lastSeen: { type: Date, default: null },
 });
 
-const User = mongoose.models.User || mongoose.model('User', userSchema);
+const User = authConn.models.User || authConn.model('User', userSchema);
 
 module.exports = User;

@@ -1,4 +1,5 @@
-const mongoose = require('../src/db');
+const mongoose = require('mongoose');
+const { profileConn } = require('../src/db');
 
 const guestViewSchema = new mongoose.Schema({
   viewerId:        { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -14,6 +15,6 @@ guestViewSchema.index({ viewerId: 1, profileOwnerId: 1 }, { unique: true });
 // Быстрый запрос гостей по владельцу профиля, сортировка по последнему визиту
 guestViewSchema.index({ profileOwnerId: 1, viewedAt: -1 });
 
-const GuestView = mongoose.models.GuestView || mongoose.model('GuestView', guestViewSchema);
+const GuestView = profileConn.models.GuestView || profileConn.model('GuestView', guestViewSchema);
 
 module.exports = GuestView;

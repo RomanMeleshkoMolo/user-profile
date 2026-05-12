@@ -1,10 +1,11 @@
 const mongoose = require('mongoose');
+const { authConn } = require('../src/db');
 
 const counterSchema = new mongoose.Schema({
   name: String,
-  seq: Number
+  seq: Number,
 });
 
-const Counter = mongoose.model('Counter', counterSchema);
+const Counter = authConn.models.Counter || authConn.model('Counter', counterSchema);
 
 module.exports = Counter;
