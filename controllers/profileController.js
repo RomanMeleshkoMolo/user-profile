@@ -1,5 +1,6 @@
 // server/controllers/profileController.js
 const mongoose = require('mongoose');
+const { likesConn, chatConn, authConn } = require('../src/db');
 const User = require('../models/userModel');
 const GuestView = require('../models/guestViewModel');
 const { emitToUser } = require('../src/socketManager');
@@ -452,13 +453,12 @@ async function deleteProfile(req, res) {
     }
 
     // Удаляем все связанные данные из других коллекций
-    const db = mongoose.connection.db;
     await Promise.allSettled([
-      db.collection('likes').deleteMany({ $or: [{ fromUser: objectId }, { toUser: objectId }] }),
-      db.collection('conversations').deleteMany({ participants: objectId }),
-      db.collection('messages').deleteMany({ $or: [{ senderId: objectId }, { receiverId: objectId }] }),
-      db.collection('seens').deleteMany({ $or: [{ userId: objectId }, { seenUserId: objectId }] }),
-      db.collection('devicetokens').deleteMany({ userId: objectId }),
+      likesConn.db.collection('likes').deleteMany({ $or: [{ fromUser: objectId }, { toUser: objectId }] }),
+      chatConn.db.collection('conversations').deleteMany({ participants: objectId }),
+      chatConn.db.collection('messages').deleteMany({ $or: [{ senderId: objectId }, { receiverId: objectId }] }),
+      likesConn.db.collection('seens').deleteMany({ $or: [{ userId: objectId }, { seenUserId: objectId }] }),
+      authConn.db.collection('devicetokens').deleteMany({ userId: objectId }),
       GuestView.deleteMany({ $or: [{ viewerId: objectId }, { profileOwnerId: objectId }] }),
     ]);
 
@@ -689,7 +689,7 @@ async function getActivityStats(req, res) {
       buckets.push({ start, end });
     }
 
-    const likesCol = mongoose.connection.db.collection('likes');
+    const likesCol = likesConn.db.collection('likes');
 
     const [dayCounts, dayLikes, total] = await Promise.all([
       Promise.all(
