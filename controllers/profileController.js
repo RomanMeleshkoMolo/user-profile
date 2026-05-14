@@ -625,7 +625,7 @@ async function getPublicProfile(req, res) {
 
     const approvedPhotos = (user.userPhoto || []).filter(p => p.status === 'approved');
     const photoUrls = await Promise.all(
-      approvedPhotos.map(p => getGetObjectUrl(p.key))
+      approvedPhotos.map(p => p.key ? getGetObjectUrl(p.key) : Promise.resolve(p.url || null))
     );
 
     return res.json({
