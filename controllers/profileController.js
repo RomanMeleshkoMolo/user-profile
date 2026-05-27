@@ -1,5 +1,6 @@
 // server/controllers/profileController.js
 const mongoose = require('mongoose');
+const http = require('http');
 const { likesConn, chatConn, authConn } = require('../src/db');
 const User = require('../models/userModel');
 const GuestView = require('../models/guestViewModel');
@@ -36,6 +37,17 @@ function getReqUserId(req) {
     req.regUserId ||
     req.userId
   );
+}
+
+// Сообщаем user-feed об изменении профиля чтобы он дропнул кеш
+function notifyFeedCacheInvalidate(userId) {
+  try {
+    const feedHost = process.env.FEED_SERVICE_HOST || 'localhost';
+    const feedPort = parseInt(process.env.FEED_SERVICE_PORT || '5001');
+    const req = http.request({ host: feedHost, port: feedPort, path: `/internal/invalidate/${userId}`, method: 'POST' });
+    req.on('error', () => {});
+    req.end();
+  } catch (_) {}
 }
 
 async function getGetObjectUrl(key, expiresInSec = PRESIGNED_TTL_SEC) {
@@ -191,6 +203,7 @@ async function updateProfile(req, res) {
     }).lean();
 
     if (!user) return res.status(404).json({ message: 'User not found' });
+    notifyFeedCacheInvalidate(userId);
     return res.json({ user: toSafeUser(user) });
   } catch (e) {
     console.error('[profile PATCH] error:', e);
@@ -268,6 +281,7 @@ async function updateAvatar(req, res) {
     await user.save();
 
     const url = await getGetObjectUrl(picked.key);
+    notifyFeedCacheInvalidate(userId);
     return res.json({
       avatar: { ...picked.toObject?.() || picked, presignedUrl: url, bucket: picked.bucket || BUCKET },
       photos: user.userPhoto,
@@ -424,6 +438,7 @@ async function addPhoto(req, res) {
         }))
     );
 
+    notifyFeedCacheInvalidate(userId);
     return res.status(201).json({ photos: enriched, user: toSafeUser(user.toObject?.() || user) });
   } catch (e) {
     console.error('[profile POST photos] error:', e);
@@ -504,6 +519,7 @@ async function removePhoto(req, res) {
       }))
     );
 
+    notifyFeedCacheInvalidate(userId);
     return res.json({ success: true, photos });
   } catch (e) {
     console.error('[profile DELETE photo] error:', e);
