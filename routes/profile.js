@@ -16,6 +16,7 @@ const {
   getGuests,
   getPublicProfile,
   getActivityStats,
+  updateForceIncognito,
 } = require('../controllers/profileController');
 
 const { getDailyPhrase } = require('../controllers/motivationController');
@@ -48,5 +49,8 @@ router.get('/profile/motivation/daily', auth({ optional: false }), getDailyPhras
 
 // Статистика просмотров анкеты
 router.get('/profile/stats/views', auth({ optional: false }), getActivityStats);
+
+// Форс-инкогнито
+router.patch('/profile/force-incognito', auth({ optional: false }), updateForceIncognito);
 
 module.exports = router;

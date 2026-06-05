@@ -108,6 +108,8 @@ function toSafeUser(user) {
     alcohol: user.alcohol || '',
     relationship: user.relationship || '',
     onboardingComplete: user.onboardingComplete,
+    isPremium: user.isPremium || user.premium || false,
+    forceIncognito: user.forceIncognito || false,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     photo: user.userPhoto || [],
@@ -545,8 +547,15 @@ async function recordProfileView(req, res) {
       return res.json({ ok: true });
     }
 
-    // Получаем данные смотрящего (имя + пол + первое фото)
-    const viewer = await User.findById(viewerId).select('name gender userPhoto').lean();
+    // Получаем данные смотрящего (имя + пол + фото + форс-инкогнито)
+    const viewer = await User.findById(viewerId).select('name gender userPhoto forceIncognito').lean();
+
+    if (viewer?.forceIncognito) {
+      // Форс-инкогнито: шпионский баннер для владельца, запись не сохраняем
+      emitToUser(ownerId, 'new_guest', { isIncognito: true });
+      return res.json({ ok: true });
+    }
+
     const rawPhoto = viewer?.userPhoto?.[0];
     let viewerPhoto = null;
 
@@ -743,6 +752,19 @@ async function getActivityStats(req, res) {
   }
 }
 
+async function updateForceIncognito(req, res) {
+  try {
+    const userId = getReqUserId(req);
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+    const value = Boolean(req.body.forceIncognito);
+    await User.findByIdAndUpdate(userId, { forceIncognito: value });
+    return res.json({ ok: true, forceIncognito: value });
+  } catch (e) {
+    console.error('[profile] updateForceIncognito error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -757,4 +779,5 @@ module.exports = {
   getGuests,
   getPublicProfile,
   getActivityStats,
+  updateForceIncognito,
 };
