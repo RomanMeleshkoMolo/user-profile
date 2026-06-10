@@ -65,6 +65,7 @@ const userSchema = new mongoose.Schema({
   lastSeen: { type: Date, default: null },
   premium: { type: Boolean, default: false },
   forceIncognito: { type: Boolean, default: false },
+  boostUntil: { type: Date, default: null },
 });
 
 const User = authConn.models.User || authConn.model('User', userSchema);

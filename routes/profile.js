@@ -17,6 +17,7 @@ const {
   getPublicProfile,
   getActivityStats,
   updateForceIncognito,
+  activateBoost,
 } = require('../controllers/profileController');
 
 const { getDailyPhrase } = require('../controllers/motivationController');
@@ -52,5 +53,8 @@ router.get('/profile/stats/views', auth({ optional: false }), getActivityStats);
 
 // Форс-инкогнито
 router.patch('/profile/force-incognito', auth({ optional: false }), updateForceIncognito);
+
+// Буст анкеты — поднять в топ ленты на ограниченное время (Premium)
+router.post('/profile/boost', auth({ optional: false }), activateBoost);
 
 module.exports = router;
