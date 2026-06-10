@@ -757,10 +757,42 @@ async function updateForceIncognito(req, res) {
     const userId = getReqUserId(req);
     if (!userId) return res.status(401).json({ message: 'Unauthorized' });
     const value = Boolean(req.body.forceIncognito);
+
+    if (value) {
+      const user = await User.findById(userId).select('premium').lean();
+      if (!user?.premium) {
+        return res.status(403).json({ message: 'Premium required' });
+      }
+    }
+
     await User.findByIdAndUpdate(userId, { forceIncognito: value });
     return res.json({ ok: true, forceIncognito: value });
   } catch (e) {
     console.error('[profile] updateForceIncognito error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+const BOOST_DURATION_MS = 60 * 60 * 1000; // 1 час
+
+// POST /profile/boost — поднять анкету в топ ленты на BOOST_DURATION_MS (только Premium)
+async function activateBoost(req, res) {
+  try {
+    const userId = getReqUserId(req);
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+    const user = await User.findById(userId).select('premium').lean();
+    if (!user?.premium) {
+      return res.status(403).json({ message: 'Premium required' });
+    }
+
+    const boostUntil = new Date(Date.now() + BOOST_DURATION_MS);
+    await User.findByIdAndUpdate(userId, { boostUntil });
+    notifyFeedCacheInvalidate(userId);
+
+    return res.json({ ok: true, boostUntil });
+  } catch (e) {
+    console.error('[profile] activateBoost error:', e);
     return res.status(500).json({ message: 'Server error' });
   }
 }
@@ -780,4 +812,5 @@ module.exports = {
   getPublicProfile,
   getActivityStats,
   updateForceIncognito,
+  activateBoost,
 };
