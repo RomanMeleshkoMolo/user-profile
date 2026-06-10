@@ -63,7 +63,6 @@ const userSchema = new mongoose.Schema({
   onboardingComplete: { type: Boolean, default: false },
   isOnline: { type: Boolean, default: false },
   lastSeen: { type: Date, default: null },
-  isPremium: { type: Boolean, default: false },
   premium: { type: Boolean, default: false },
   forceIncognito: { type: Boolean, default: false },
 });

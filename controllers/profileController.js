@@ -108,7 +108,7 @@ function toSafeUser(user) {
     alcohol: user.alcohol || '',
     relationship: user.relationship || '',
     onboardingComplete: user.onboardingComplete,
-    isPremium: user.isPremium || user.premium || false,
+    premium: user.premium || false,
     forceIncognito: user.forceIncognito || false,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
