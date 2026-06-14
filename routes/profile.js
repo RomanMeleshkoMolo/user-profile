@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { auth } = require('../middlewares/auth');
+const { emitToUser } = require('../src/socketManager');
 const {
   getProfile,
   updateProfile,
@@ -56,5 +57,15 @@ router.patch('/profile/force-incognito', auth({ optional: false }), updateForceI
 
 // Буст анкеты — поднять в топ ленты на ограниченное время (Premium)
 router.post('/profile/boost', auth({ optional: false }), activateBoost);
+
+// Внутренний эндпоинт: воркер пересчёта активности уведомляет об изменении статуса "Топ"
+// event: 'top_status_earned' | 'top_status_lost'
+router.post('/internal/notify-top-status', (req, res) => {
+  const { userIds, event } = req.body || {};
+  if (Array.isArray(userIds) && event) {
+    userIds.forEach((userId) => emitToUser(userId, event, {}));
+  }
+  res.json({ ok: true });
+});
 
 module.exports = router;
