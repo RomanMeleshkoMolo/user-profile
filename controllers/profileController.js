@@ -773,24 +773,35 @@ async function updateForceIncognito(req, res) {
   }
 }
 
-const BOOST_DURATION_MS = 60 * 60 * 1000; // 1 час
+const BOOST_DURATION_MS = 30 * 60 * 1000; // 30 минут
+const BOOST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 1 раз в сутки
 
-// POST /profile/boost — поднять анкету в топ ленты на BOOST_DURATION_MS (только Premium)
+// POST /profile/boost — разово поднять анкету в топ ленты на BOOST_DURATION_MS,
+// доступно только Premium-пользователям, не чаще одного раза в BOOST_COOLDOWN_MS
 async function activateBoost(req, res) {
   try {
     const userId = getReqUserId(req);
     if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-    const user = await User.findById(userId).select('premium').lean();
+    const user = await User.findById(userId).select('lastBoostAt premium').lean();
+
     if (!user?.premium) {
       return res.status(403).json({ message: 'Premium required' });
     }
 
-    const boostUntil = new Date(Date.now() + BOOST_DURATION_MS);
-    await User.findByIdAndUpdate(userId, { boostUntil });
+    if (user?.lastBoostAt) {
+      const nextAvailableAt = new Date(new Date(user.lastBoostAt).getTime() + BOOST_COOLDOWN_MS);
+      if (nextAvailableAt > new Date()) {
+        return res.status(429).json({ message: 'Boost cooldown active', nextAvailableAt });
+      }
+    }
+
+    const now = new Date();
+    const boostUntil = new Date(now.getTime() + BOOST_DURATION_MS);
+    await User.findByIdAndUpdate(userId, { boostUntil, lastBoostAt: now });
     notifyFeedCacheInvalidate(userId);
 
-    return res.json({ ok: true, boostUntil });
+    return res.json({ ok: true, boostUntil, lastBoostAt: now });
   } catch (e) {
     console.error('[profile] activateBoost error:', e);
     return res.status(500).json({ message: 'Server error' });
