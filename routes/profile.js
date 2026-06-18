@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { auth } = require('../middlewares/auth');
+const { validate, schemas } = require('../middlewares/validate');
 const { emitToUser } = require('../src/socketManager');
 const {
   getProfile,
@@ -25,7 +26,7 @@ const { getDailyPhrase } = require('../controllers/motivationController');
 
 // Все эндпоинты защищены
 router.get('/profile', auth({ optional: false }), getProfile);
-router.patch('/profile', auth({ optional: false }), updateProfile);
+router.patch('/profile', auth({ optional: false }), validate(schemas.updateProfile), updateProfile);
 router.delete('/profile', auth({ optional: false }), deleteProfile);
 
 router.get('/profile/avatar', auth({ optional: false }), getAvatar);
@@ -36,7 +37,7 @@ router.get('/profile/photos', auth({ optional: false }), getPhotos);
 // Получить presigned PUT URL для загрузки фото напрямую в S3
 router.get('/profile/photos/upload-url', auth({ optional: false }), getPhotoUploadUrl);
 // Принимаем метаданные уже загруженных фото: { photos: [{ key, filename, mimeType, size }] }
-router.post('/profile/photos', auth({ optional: false }), addPhoto);
+router.post('/profile/photos', auth({ optional: false }), validate(schemas.addPhoto), addPhoto);
 
 // Удаление по key
 router.delete('/profile/photos/:photoId', auth({ optional: false }), removePhoto);
