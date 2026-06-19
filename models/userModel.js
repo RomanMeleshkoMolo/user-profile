@@ -64,6 +64,7 @@ const userSchema = new mongoose.Schema({
   isOnline: { type: Boolean, default: false },
   lastSeen: { type: Date, default: null },
   premium: { type: Boolean, default: false },
+  premiumUntil: { type: Date, default: null },
   forceIncognito: { type: Boolean, default: false },
   boostUntil: { type: Date, default: null },
   lastBoostAt: { type: Date, default: null },
