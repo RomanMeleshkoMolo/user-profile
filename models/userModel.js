@@ -68,6 +68,7 @@ const userSchema = new mongoose.Schema({
   forceIncognito: { type: Boolean, default: false },
   boostUntil: { type: Date, default: null },
   lastBoostAt: { type: Date, default: null },
+  questionAnswers: { type: Map, of: String, default: new Map() },
   activityScore: { type: Number, default: 0 },
   activityUpdatedAt: { type: Date, default: null },
 });

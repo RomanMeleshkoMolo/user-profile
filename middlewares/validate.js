@@ -32,6 +32,7 @@ const schemas = {
     userSex: Joi.string().max(30),
     userLocation: Joi.string().max(255),
     forceIncognito: Joi.boolean(),
+    questionAnswers: Joi.object().pattern(Joi.string().max(50), Joi.string().max(200)),
   }).unknown(false),
 
   addPhoto: Joi.object({
