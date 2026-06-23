@@ -107,6 +107,7 @@ function toSafeUser(user) {
     smoking: user.smoking || '',
     alcohol: user.alcohol || '',
     relationship: user.relationship || '',
+    questionAnswers: user.questionAnswers || {},
     onboardingComplete: user.onboardingComplete,
     premium: user.premium || false,
     forceIncognito: user.forceIncognito || false,
@@ -147,7 +148,7 @@ async function updateProfile(req, res) {
       return res.status(401).json({ message: 'Unauthorized: user id not found in request context' });
     }
 
-    const allowed = ['name', 'gender', 'age', 'userBirthday', 'wishUser', 'userLocation', 'interests', 'education', 'lookingFor', 'about', 'work', 'userSex', 'zodiac', 'languages', 'children', 'pets', 'smoking', 'alcohol', 'relationship'];
+    const allowed = ['name', 'gender', 'age', 'userBirthday', 'wishUser', 'userLocation', 'interests', 'education', 'lookingFor', 'about', 'work', 'userSex', 'zodiac', 'languages', 'children', 'pets', 'smoking', 'alcohol', 'relationship', 'questionAnswers'];
     const updates = {};
     for (const key of allowed) {
       if (key in req.body) updates[key] = req.body[key];
@@ -196,6 +197,21 @@ async function updateProfile(req, res) {
         updates.lookingFor = null;
       } else {
         delete updates.lookingFor;
+      }
+    }
+
+    // questionAnswers — мержим с существующими, а не перезаписываем
+    if ('questionAnswers' in updates) {
+      const qa = updates.questionAnswers;
+      if (qa && typeof qa === 'object') {
+        const setOps = {};
+        for (const [qId, answer] of Object.entries(qa)) {
+          setOps[`questionAnswers.${qId}`] = String(answer).slice(0, 200);
+        }
+        delete updates.questionAnswers;
+        Object.assign(updates, setOps);
+      } else {
+        delete updates.questionAnswers;
       }
     }
 
@@ -674,6 +690,7 @@ async function getPublicProfile(req, res) {
       smoking: user.smoking || '',
       alcohol: user.alcohol || '',
       relationship: user.relationship || '',
+      questionAnswers: user.questionAnswers || {},
       isOnline: user.isOnline || false,
       photoUrls,
     });
