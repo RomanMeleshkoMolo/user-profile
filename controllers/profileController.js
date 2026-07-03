@@ -131,9 +131,13 @@ async function getProfile(req, res) {
     const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // console.log( user );
-    // return res.json({ user: toSafeUser(user) });
-    return res.json({ user: user });
+    // Убираем чувствительные поля из ответа (утечка PII/секретов).
+    // Именно blacklist, а не toSafeUser-whitelist: клиент читает activityScore,
+    // boostUntil и др. поля, которых в toSafeUser нет — их нельзя терять.
+    delete user.confirmationCode;
+    delete user.deviceId;
+    delete user.__v;
+    return res.json({ user });
   } catch (e) {
     console.error('[profile GET] error:', e);
     return res.status(500).json({ message: 'Server error' });
@@ -213,6 +217,16 @@ async function updateProfile(req, res) {
       } else {
         delete updates.questionAnswers;
       }
+    }
+
+    // При смене локации пересчитываем нормализованные (lowercase) части для
+    // indexed-фильтрации в ленте/анкетах (тот же позиционный разбор, что в feed/meets).
+    if ('userLocation' in updates) {
+      const parts = String(updates.userLocation || '')
+        .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      updates.city = parts[0] || null;
+      updates.region = parts[1] || null;
+      updates.country = parts[2] || null;
     }
 
     const user = await User.findByIdAndUpdate(userId, updates, {

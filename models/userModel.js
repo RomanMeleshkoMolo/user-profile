@@ -52,6 +52,10 @@ const userSchema = new mongoose.Schema({
   userPhotoUrls: [{ type: String }],
   tabIconUserProfile: { type: String },
   userLocation: { type: String, index: true },
+  // Нормализованные (lowercase) части локации для indexed-фильтрации ленты/анкет
+  city: { type: String, default: null },
+  region: { type: String, default: null },
+  country: { type: String, default: null },
   userSex: { type: String, enum: ['heterosexual', 'gay', 'lesbian', 'bisexual', 'asexual'] },
   zodiac: { type: String, default: '' },
   languages: { type: [String], default: [] },
