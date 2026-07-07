@@ -56,6 +56,12 @@ const userSchema = new mongoose.Schema({
   city: { type: String, default: null },
   region: { type: String, default: null },
   country: { type: String, default: null },
+  // GPS-координаты для поиска «Кто рядом» (GeoJSON Point, порядок: [lng, lat])
+  geo: {
+    type: { type: String, enum: ['Point'] },
+    coordinates: { type: [Number], default: undefined },
+  },
+  geoUpdatedAt: { type: Date, default: null },
   userSex: { type: String, enum: ['heterosexual', 'gay', 'lesbian', 'bisexual', 'asexual'] },
   zodiac: { type: String, default: '' },
   languages: { type: [String], default: [] },
@@ -76,6 +82,9 @@ const userSchema = new mongoose.Schema({
   activityScore: { type: Number, default: 0 },
   activityUpdatedAt: { type: Date, default: null },
 });
+
+// 2dsphere-индекс для geo-запросов «Кто рядом» ($geoNear в user-meets)
+userSchema.index({ geo: '2dsphere' });
 
 const User = authConn.models.User || authConn.model('User', userSchema);
 

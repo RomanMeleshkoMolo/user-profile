@@ -20,6 +20,7 @@ const {
   getActivityStats,
   updateForceIncognito,
   activateBoost,
+  updateGeoLocation,
 } = require('../controllers/profileController');
 
 const { getDailyPhrase } = require('../controllers/motivationController');
@@ -52,6 +53,9 @@ router.get('/profile/motivation/daily', auth({ optional: false }), getDailyPhras
 
 // Статистика просмотров анкеты
 router.get('/profile/stats/views', auth({ optional: false }), getActivityStats);
+
+// GPS-координаты для поиска «Кто рядом»
+router.put('/profile/location', auth({ optional: false }), validate(schemas.updateLocation), updateGeoLocation);
 
 // Форс-инкогнито
 router.patch('/profile/force-incognito', auth({ optional: false }), updateForceIncognito);

@@ -5,6 +5,7 @@ const { likesConn, chatConn, authConn } = require('../src/db');
 const User = require('../models/userModel');
 const GuestView = require('../models/guestViewModel');
 const { emitToUser } = require('../src/socketManager');
+const { geocodeCity } = require('../src/geocode');
 
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
@@ -227,6 +228,14 @@ async function updateProfile(req, res) {
       updates.city = parts[0] || null;
       updates.region = parts[1] || null;
       updates.country = parts[2] || null;
+
+      // Координаты нового города — отправная точка гео-поиска анкет в user-meets.
+      // Геокодинг не удался → geo не трогаем, meets уйдёт в фолбэк по city/region.
+      const geo = await geocodeCity(updates.userLocation);
+      if (geo) {
+        updates.geo = geo;
+        updates.geoUpdatedAt = new Date();
+      }
     }
 
     const user = await User.findByIdAndUpdate(userId, updates, {
@@ -804,6 +813,26 @@ async function updateForceIncognito(req, res) {
   }
 }
 
+// PUT /profile/location — сохранить GPS-координаты для поиска «Кто рядом».
+// Координаты хранятся как GeoJSON Point [lng, lat] и наружу не отдаются —
+// другие юзеры видят только округлённое расстояние (считает user-meets).
+async function updateGeoLocation(req, res) {
+  try {
+    const userId = getReqUserId(req);
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { latitude, longitude } = req.body;
+    await User.findByIdAndUpdate(userId, {
+      geo: { type: 'Point', coordinates: [longitude, latitude] },
+      geoUpdatedAt: new Date(),
+    });
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('[profile] updateGeoLocation error:', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 const BOOST_DURATION_MS = 30 * 60 * 1000; // 30 минут
 const BOOST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 1 раз в сутки
 
@@ -855,4 +884,5 @@ module.exports = {
   getActivityStats,
   updateForceIncognito,
   activateBoost,
+  updateGeoLocation,
 };
