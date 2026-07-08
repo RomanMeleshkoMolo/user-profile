@@ -6,6 +6,7 @@ const User = require('../models/userModel');
 const GuestView = require('../models/guestViewModel');
 const { emitToUser } = require('../src/socketManager');
 const { geocodeCity } = require('../src/geocode');
+const { sendNewGuestNotification } = require('../services/pushNotificationService');
 
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
@@ -634,6 +635,11 @@ async function recordProfileView(req, res) {
         viewerPhoto,
         viewerGender,
       });
+
+      // FCM push — доставляется и когда приложение свёрнуто/убито
+      sendNewGuestNotification(ownerId, { _id: viewerId, name: viewer?.name || '' }).catch((e) =>
+        console.error('[profile] Guest push error:', e.message)
+      );
     }
 
     return res.json({ ok: true });
