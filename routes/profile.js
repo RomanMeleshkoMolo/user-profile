@@ -24,6 +24,7 @@ const {
 } = require('../controllers/profileController');
 
 const { getDailyPhrase } = require('../controllers/motivationController');
+const { reportUser, blockUser, unblockUser } = require('../controllers/safetyController');
 
 // Все эндпоинты защищены
 router.get('/profile', auth({ optional: false }), getProfile);
@@ -62,6 +63,11 @@ router.patch('/profile/force-incognito', auth({ optional: false }), updateForceI
 
 // Буст анкеты — поднять в топ ленты на ограниченное время (Premium)
 router.post('/profile/boost', auth({ optional: false }), activateBoost);
+
+// Жалобы и блокировка (требование Google Play / App Store для dating)
+router.post('/profile/report', auth({ optional: false }), reportUser);
+router.post('/profile/block', auth({ optional: false }), blockUser);
+router.delete('/profile/block/:userId', auth({ optional: false }), unblockUser);
 
 // Внутренний эндпоинт: воркер пересчёта активности уведомляет об изменении статуса "Топ"
 // event: 'top_status_earned' | 'top_status_lost'

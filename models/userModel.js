@@ -75,6 +75,8 @@ const userSchema = new mongoose.Schema({
   lastSeen: { type: Date, default: null },
   premium: { type: Boolean, default: false },
   premiumUntil: { type: Date, default: null },
+  // Заблокированные пользователи (жалобы/блокировка — требование сторов)
+  blockedUsers: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   forceIncognito: { type: Boolean, default: false },
   boostUntil: { type: Date, default: null },
   lastBoostAt: { type: Date, default: null },
