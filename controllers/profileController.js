@@ -16,6 +16,14 @@ const REGION = process.env.AWS_REGION || 'eu-north-1';
 const BUCKET = process.env.S3_BUCKET || process.env.AWS_BUCKET || 'molo-user-photos';
 const PRESIGNED_TTL_SEC = Number(process.env.S3_GET_TTL_SEC || 3600); // 1 час по умолчанию
 
+// Лимит фото в профиле (approved + pending). Авторитетно ещё раз проверяется
+// в user-service /onboarding/photos/validate — здесь ранний guard для UX.
+const MAX_PROFILE_PHOTOS = Number(process.env.MAX_PROFILE_PHOTOS || 30);
+const countActivePhotos = (user) =>
+  (user?.userPhoto || []).filter(
+    (p) => p && (p.status === 'approved' || p.status === 'pending')
+  ).length;
+
 const credentials = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
   ? { accessKeyId: process.env.AWS_ACCESS_KEY_ID, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY }
   : undefined;
@@ -70,6 +78,15 @@ async function getPhotoUploadUrl(req, res) {
     const userId = getReqUserId(req);
     if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
       return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Ранний guard по лимиту — не выдаём presigned URL, если уже 30 фото
+    const existing = await User.findById(userId).select('userPhoto').lean();
+    if (countActivePhotos(existing) >= MAX_PROFILE_PHOTOS) {
+      return res.status(422).json({
+        ok: false,
+        reason: `Достигнут лимит: не более ${MAX_PROFILE_PHOTOS} фотографий в профиле`,
+      });
     }
 
     const { filename, mimeType } = req.query;
@@ -462,12 +479,23 @@ async function addPhoto(req, res) {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     user.userPhoto = user.userPhoto || [];
-    user.userPhoto.push(...normalized);
+
+    // Лимит фото в профиле — не даём превысить MAX_PROFILE_PHOTOS
+    const activeCount = countActivePhotos(user);
+    const freeSlots = Math.max(0, MAX_PROFILE_PHOTOS - activeCount);
+    if (freeSlots === 0) {
+      return res.status(422).json({
+        message: `Достигнут лимит: не более ${MAX_PROFILE_PHOTOS} фотографий в профиле`,
+        reason: `Достигнут лимит: не более ${MAX_PROFILE_PHOTOS} фотографий в профиле`,
+      });
+    }
+    const toSave = normalized.slice(0, freeSlots);
+    user.userPhoto.push(...toSave);
 
     await user.save();
 
-    // Запускаем фоновую верификацию (не блокирует ответ)
-    const newKeys = normalized.map((p) => p.key);
+    // Запускаем фоновую верификацию (не блокирует ответ) — только по сохранённым фото
+    const newKeys = toSave.map((p) => p.key);
     schedulePhotoVerification(userId, newKeys);
 
     const enriched = await Promise.all(
