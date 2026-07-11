@@ -25,6 +25,17 @@ const {
 
 const { getDailyPhrase } = require('../controllers/motivationController');
 const { reportUser, blockUser, unblockUser } = require('../controllers/safetyController');
+const { revenuecatWebhook } = require('../controllers/revenuecatController');
+const { getPremiumStatus, setPremium } = require('../controllers/adminController');
+
+// Webhook RevenueCat — БЕЗ JWT-auth: аутентификация по секрету в заголовке
+// Authorization (проверяется внутри контроллера через REVENUECAT_WEBHOOK_SECRET).
+router.post('/profile/webhooks/revenuecat', revenuecatWebhook);
+
+// Admin: ручное управление премиумом поддержкой — БЕЗ JWT-auth,
+// аутентификация по x-admin-secret (ADMIN_API_SECRET) внутри контроллера.
+router.get('/profile/admin/premium', getPremiumStatus);
+router.post('/profile/admin/premium', setPremium);
 
 // Все эндпоинты защищены
 router.get('/profile', auth({ optional: false }), getProfile);
