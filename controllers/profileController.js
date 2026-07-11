@@ -4,6 +4,7 @@ const http = require('http');
 const { likesConn, chatConn, authConn } = require('../src/db');
 const User = require('../models/userModel');
 const GuestView = require('../models/guestViewModel');
+const { isPremiumActive } = require('../utils/premium');
 const { emitToUser } = require('../src/socketManager');
 const { geocodeCity } = require('../src/geocode');
 const { sendNewGuestNotification } = require('../services/pushNotificationService');
@@ -128,7 +129,7 @@ function toSafeUser(user) {
     relationship: user.relationship || '',
     questionAnswers: user.questionAnswers || {},
     onboardingComplete: user.onboardingComplete,
-    premium: user.premium || false,
+    premium: isPremiumActive(user),
     forceIncognito: user.forceIncognito || false,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -149,6 +150,10 @@ async function getProfile(req, res) {
 
     const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Пересчитываем premium из premiumUntil — клиент всегда получает свежий флаг,
+    // даже если хранимый premium в БД протух (истёк, но ещё true).
+    user.premium = isPremiumActive(user);
 
     // Убираем чувствительные поля из ответа (утечка PII/секретов).
     // Именно blacklist, а не toSafeUser-whitelist: клиент читает activityScore,
@@ -833,8 +838,8 @@ async function updateForceIncognito(req, res) {
     const value = Boolean(req.body.forceIncognito);
 
     if (value) {
-      const user = await User.findById(userId).select('premium').lean();
-      if (!user?.premium) {
+      const user = await User.findById(userId).select('premiumUntil').lean();
+      if (!isPremiumActive(user)) {
         return res.status(403).json({ message: 'Premium required' });
       }
     }
@@ -877,9 +882,9 @@ async function activateBoost(req, res) {
     const userId = getReqUserId(req);
     if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-    const user = await User.findById(userId).select('lastBoostAt premium').lean();
+    const user = await User.findById(userId).select('lastBoostAt premiumUntil').lean();
 
-    if (!user?.premium) {
+    if (!isPremiumActive(user)) {
       return res.status(403).json({ message: 'Premium required' });
     }
 

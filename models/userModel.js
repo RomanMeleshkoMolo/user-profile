@@ -73,8 +73,10 @@ const userSchema = new mongoose.Schema({
   onboardingComplete: { type: Boolean, default: false },
   isOnline: { type: Boolean, default: false },
   lastSeen: { type: Date, default: null },
-  premium: { type: Boolean, default: false },
-  premiumUntil: { type: Date, default: null },
+  premium: { type: Boolean, default: false },      // кэш; пересчитывается из premiumUntil при чтении
+  premiumUntil: { type: Date, default: null },     // источник правды: премиум активен пока premiumUntil > now
+  premiumSource: { type: String, default: null },  // 'apple' | 'google' | 'revenuecat' | 'manual'
+  premiumProduct: { type: String, default: null }, // 'monthly' | 'yearly' | 'legacy' | ...
   // Заблокированные пользователи (жалобы/блокировка — требование сторов)
   blockedUsers: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   forceIncognito: { type: Boolean, default: false },
