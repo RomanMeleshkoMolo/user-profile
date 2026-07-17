@@ -14,7 +14,6 @@ function validate(schema) {
 const schemas = {
   updateProfile: Joi.object({
     name: Joi.string().min(1).max(100),
-    age: Joi.number().integer().min(18).max(100),
     about: Joi.string().max(1000).allow(''),
     work: Joi.string().max(200).allow(''),
     education: Joi.string().max(50),

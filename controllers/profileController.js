@@ -176,7 +176,9 @@ async function updateProfile(req, res) {
       return res.status(401).json({ message: 'Unauthorized: user id not found in request context' });
     }
 
-    const allowed = ['name', 'gender', 'age', 'userBirthday', 'wishUser', 'userLocation', 'interests', 'education', 'lookingFor', 'about', 'work', 'userSex', 'zodiac', 'languages', 'children', 'pets', 'smoking', 'alcohol', 'relationship', 'questionAnswers'];
+    // userBirthday и age задаются один раз при онбординге (POST /onboarding/birthday)
+    // и здесь не редактируются — возраст должен оставаться достоверным.
+    const allowed = ['name', 'gender', 'wishUser', 'userLocation', 'interests', 'education', 'lookingFor', 'about', 'work', 'userSex', 'zodiac', 'languages', 'children', 'pets', 'smoking', 'alcohol', 'relationship', 'questionAnswers'];
     const updates = {};
     for (const key of allowed) {
       if (key in req.body) updates[key] = req.body[key];
