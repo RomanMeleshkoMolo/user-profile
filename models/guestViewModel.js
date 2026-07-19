@@ -5,7 +5,11 @@ const guestViewSchema = new mongoose.Schema({
   viewerId:        { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   profileOwnerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   viewerName:      { type: String, default: '' },
-  viewerPhoto:     { type: String, default: null }, // первое фото/presigned URL
+  // Внешний URL фото (для не-S3 источников) или legacy-значение.
+  viewerPhoto:     { type: String, default: null },
+  // S3-ключ фото гостя. presigned URL генерируется заново при чтении (getGuests) —
+  // хранить готовый presigned URL нельзя: TTL 1 час, а гостей смотрят позже → 403.
+  viewerPhotoKey:  { type: String, default: null },
   viewerGender:    { type: String, default: '' },
   viewedAt:        { type: Date, default: Date.now },
 });
