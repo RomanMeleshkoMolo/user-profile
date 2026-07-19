@@ -50,11 +50,15 @@ async function seed() {
   for (let i = 0; i < 50; i++) {
     const user = users[i % users.length];
 
-    // Берём первое approved фото, или просто первое
-    const photo =
-      user.userPhoto.find((p) => p.status === 'approved')?.url ||
-      user.userPhoto[0]?.url ||
+    // Берём первое approved фото (или просто первое). Храним S3-ключ —
+    // presigned URL генерируется на чтении в getGuests (иначе протухает за 1 час).
+    const photoObj =
+      user.userPhoto.find((p) => p.status === 'approved' && p.key) ||
+      user.userPhoto.find((p) => p.key) ||
+      user.userPhoto[0] ||
       null;
+    const viewerPhotoKey = photoObj?.key || null;
+    const viewerPhoto = photoObj?.key ? null : (photoObj?.url || null);
 
     const viewedAt = new Date(Date.now() - i * 2 * 60 * 1000); // каждые 2 минуты назад
 
@@ -64,7 +68,8 @@ async function seed() {
       viewerId: new mongoose.Types.ObjectId(),
       profileOwnerId: new mongoose.Types.ObjectId(OWNER_ID),
       viewerName: user.name || 'Пользователь',
-      viewerPhoto: photo,
+      viewerPhoto,
+      viewerPhotoKey,
       viewedAt,
     });
   }

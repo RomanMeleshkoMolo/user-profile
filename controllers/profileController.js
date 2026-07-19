@@ -632,18 +632,17 @@ async function recordProfileView(req, res) {
     }
 
     const rawPhoto = viewer?.userPhoto?.[0];
-    let viewerPhoto = null;
+    // Храним S3-ключ (viewerPhotoKey) и/или внешний URL (viewerPhoto).
+    // presigned URL НЕ храним — он живёт 1 час, а гостей открывают позже (→ 403).
+    const viewerPhotoKey = rawPhoto?.key || null;
+    const viewerPhoto = !rawPhoto?.key && rawPhoto?.url ? rawPhoto.url : null;
 
-    if (rawPhoto) {
-      if (rawPhoto.key) {
-        // S3 presigned URL
-        try {
-          const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: rawPhoto.key });
-          viewerPhoto = await getSignedUrl(s3, cmd, { expiresIn: PRESIGNED_TTL_SEC });
-        } catch (_) {}
-      } else if (rawPhoto.url) {
-        viewerPhoto = rawPhoto.url;
-      }
+    // Для немедленного показа (сокет-баннер) presign-им свежий URL прямо сейчас.
+    let freshPhotoUrl = viewerPhoto;
+    if (viewerPhotoKey) {
+      try {
+        freshPhotoUrl = await getGetObjectUrl(viewerPhotoKey);
+      } catch (_) {}
     }
 
     const viewerGender = viewer?.gender?.id || '';
@@ -658,7 +657,7 @@ async function recordProfileView(req, res) {
     // Upsert: один гость → одна запись, обновляем viewedAt и фото
     await GuestView.findOneAndUpdate(
       { viewerId: new mongoose.Types.ObjectId(viewerId), profileOwnerId: new mongoose.Types.ObjectId(ownerId) },
-      { viewedAt: new Date(), viewerName: viewer?.name || '', viewerPhoto, viewerGender },
+      { viewedAt: new Date(), viewerName: viewer?.name || '', viewerPhoto, viewerPhotoKey, viewerGender },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
@@ -667,7 +666,7 @@ async function recordProfileView(req, res) {
       emitToUser(ownerId, 'new_guest', {
         viewerId,
         viewerName: viewer?.name || '',
-        viewerPhoto,
+        viewerPhoto: freshPhotoUrl,
         viewerGender,
       });
 
@@ -697,16 +696,48 @@ async function getGuests(req, res) {
       .limit(100)
       .lean();
 
+    // Legacy-записи (созданы до фикса) хранят протухший presigned URL и не имеют
+    // viewerPhotoKey — подтягиваем актуальный ключ фото гостя из User одним запросом.
+    const missingKeyIds = guests
+      .filter((g) => !g.viewerPhotoKey && g.viewerId)
+      .map((g) => String(g.viewerId));
+
+    const keyByViewerId = new Map();
+    if (missingKeyIds.length) {
+      const viewers = await User.find({ _id: { $in: missingKeyIds } })
+        .select('userPhoto')
+        .lean();
+      for (const v of viewers) {
+        const key = v?.userPhoto?.[0]?.key || null;
+        if (key) keyByViewerId.set(String(v._id), key);
+      }
+    }
+
+    // presign-им фото заново при каждом чтении — хранимый presigned URL истекает
+    // через 1 час, поэтому берём свежий из S3-ключа (viewerPhotoKey).
+    const guestsWithPhotos = await Promise.all(
+      guests.map(async (g) => {
+        const key = g.viewerPhotoKey || keyByViewerId.get(String(g.viewerId)) || null;
+        let viewerPhoto = key ? null : (g.viewerPhoto || null);
+        if (key) {
+          try {
+            viewerPhoto = await getGetObjectUrl(key);
+          } catch (_) {}
+        }
+        return {
+          _id:          g._id,
+          viewerId:     g.viewerId,
+          viewerName:   g.viewerName,
+          viewerPhoto,
+          viewerGender: g.viewerGender || '',
+          viewedAt:     g.viewedAt,
+        };
+      })
+    );
+
     return res.json({
-      count: guests.length,
-      guests: guests.map(g => ({
-        _id:          g._id,
-        viewerId:     g.viewerId,
-        viewerName:   g.viewerName,
-        viewerPhoto:  g.viewerPhoto,
-        viewerGender: g.viewerGender || '',
-        viewedAt:     g.viewedAt,
-      })),
+      count: guestsWithPhotos.length,
+      guests: guestsWithPhotos,
     });
   } catch (e) {
     console.error('[profile] getGuests error:', e);
