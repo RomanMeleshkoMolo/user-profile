@@ -4,7 +4,7 @@ const http = require('http');
 const { likesConn, chatConn, authConn } = require('../src/db');
 const User = require('../models/userModel');
 const GuestView = require('../models/guestViewModel');
-const { isPremiumActive } = require('../utils/premium');
+const { isPremiumActive, isIncognitoActive, syncPremiumExpiry } = require('../utils/premium');
 const { emitToUser } = require('../src/socketManager');
 const { geocodeCity } = require('../src/geocode');
 const { sendNewGuestNotification } = require('../services/pushNotificationService');
@@ -130,7 +130,8 @@ function toSafeUser(user) {
     questionAnswers: user.questionAnswers || {},
     onboardingComplete: user.onboardingComplete,
     premium: isPremiumActive(user),
-    forceIncognito: user.forceIncognito || false,
+    // Инкогнито — премиум-фича: без активного премиума тумблер не действует
+    forceIncognito: isIncognitoActive(user),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     photo: user.userPhoto || [],
@@ -152,7 +153,10 @@ async function getProfile(req, res) {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     // Пересчитываем premium из premiumUntil — клиент всегда получает свежий флаг,
-    // даже если хранимый premium в БД протух (истёк, но ещё true).
+    // даже если хранимый premium в БД протух (истёк, но ещё true). Заодно, если
+    // премиум кончился, возвращаем юзера в допремиумное состояние: гасим кэш
+    // premium и премиум-онли тумблеры (forceIncognito) и в объекте, и в БД.
+    await syncPremiumExpiry(User, user);
     user.premium = isPremiumActive(user);
 
     // Убираем чувствительные поля из ответа (утечка PII/секретов).
@@ -622,10 +626,16 @@ async function recordProfileView(req, res) {
       return res.json({ ok: true });
     }
 
-    // Получаем данные смотрящего (имя + пол + фото + форс-инкогнито)
-    const viewer = await User.findById(viewerId).select('name gender userPhoto forceIncognito').lean();
+    // Получаем данные смотрящего (имя + пол + фото + форс-инкогнито + премиум)
+    const viewer = await User.findById(viewerId)
+      .select('name gender userPhoto forceIncognito premium premiumUntil')
+      .lean();
 
-    if (viewer?.forceIncognito) {
+    // Премиум мог истечь — снимаем протухшие флаги, иначе бывший премиум
+    // остался бы инкогнито навсегда.
+    await syncPremiumExpiry(User, viewer);
+
+    if (isIncognitoActive(viewer)) {
       // Форс-инкогнито: шпионский баннер для владельца, запись не сохраняем
       emitToUser(ownerId, 'new_guest', { isIncognito: true });
       return res.json({ ok: true });
